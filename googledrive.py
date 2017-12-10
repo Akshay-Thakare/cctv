@@ -101,59 +101,65 @@ class GoogleDrive(object):
 
 
     def create_folder_if_not_exists(self):
-        
-        results = self.drive_service.files().list(
-            q="name='" + APPLICATION_NAME + "' and mimeType='" + APP_FOLDER_TYPE + "'",
-            spaces='drive',
-            pageSize=10,
-            fields="nextPageToken, files(id, name)").execute()
-        
-        items = results.get('files', [])
-        
-        if not items:
-            # logging.debug('No files found.')
-            return self.createFolder()
-        else:
-            # logging.debug( '{0} ({1})'.format(items[0]['name'], items[0]['id']) )
-            return items[0]['id']
-            # logging.debug('Files:')
-            # for item in items:
-            #     logging.debug('{0} ({1})'.format(item['name'], item['id']))
+        try:
+            results = self.drive_service.files().list(
+                q="name='" + APPLICATION_NAME + "' and mimeType='" + APP_FOLDER_TYPE + "'",
+                spaces='drive',
+                pageSize=10,
+                fields="nextPageToken, files(id, name)").execute()
+            
+            items = results.get('files', [])
+            
+            if not items:
+                # logging.debug('No files found.')
+                return self.createFolder()
+            else:
+                # logging.debug( '{0} ({1})'.format(items[0]['name'], items[0]['id']) )
+                return True, items[0]['id']
+                # logging.debug('Files:')
+                # for item in items:
+                #     logging.debug('{0} ({1})'.format(item['name'], item['id']))
+        except:
+            return False, 0
 
 
     def createFolder(self):
-        
-        file_metadata = {
-            'name': APPLICATION_NAME,
-            'mimeType': APP_FOLDER_TYPE
-        }
-        
-        file = self.drive_service.files().create(body=file_metadata,
-                                            fields='id').execute()
-        
-        # logging.debug ('Folder ID: %s' % file.get('id'))
-        
-        return file.get('id')
+        try:
+            file_metadata = {
+                'name': APPLICATION_NAME,
+                'mimeType': APP_FOLDER_TYPE
+            }
+            
+            file = self.drive_service.files().create(body=file_metadata,
+                                                fields='id').execute()
+            
+            # logging.debug ('Folder ID: %s' % file.get('id'))
+            
+            return True, file.get('id')
+        except:
+            return False, 0
 
 
     def upload_file(self, file_name, file_path):
-        
-        folder_id = self.create_folder_if_not_exists()
-        file_metadata = {
-            'name': file_name,
-            'parents': [folder_id]
-        }
-        
         try:
-            media = MediaFileUpload(file_path,
-                                    resumable=True)
+            status, folder_id = self.create_folder_if_not_exists()
+            if status is True:
+                file_metadata = {
+                    'name': file_name,
+                    'parents': [folder_id]
+                }
 
-            file = self.drive_service.files().create(body=file_metadata,
-                                                media_body=media,
-                                                fields='id').execute()
+                media = MediaFileUpload(file_path,
+                                        resumable=True)
 
-            # logging.debug('File ID: %s' % file.get('id'))
-            return True
+                file = self.drive_service.files().create(body=file_metadata,
+                                                    media_body=media,
+                                                    fields='id').execute()
+
+                # logging.debug('File ID: %s' % file.get('id'))
+                return True
+            else:
+                return False
         except Exception as err:
             print('error uploading file')
             return False
