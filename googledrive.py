@@ -41,31 +41,39 @@ class GoogleDrive(object):
         Returns:
             Credentials, the obtained credential.
         """
-        home_dir = os.path.expanduser('~')
-        credential_dir = os.path.join(home_dir, '.credentials')
-        if not os.path.exists(credential_dir):
-            os.makedirs(credential_dir)
-        credential_path = os.path.join(credential_dir,
-                                       'drive-python-quickstart.json')
+        try:
+            home_dir = os.path.expanduser('~')
+            credential_dir = os.path.join(home_dir, '.credentials')
+            if not os.path.exists(credential_dir):
+                os.makedirs(credential_dir)
+            credential_path = os.path.join(credential_dir,
+                                           'drive-python-quickstart.json')
 
-        store = Storage(credential_path)
-        credentials = store.get()
-        if not credentials or credentials.invalid:
-            flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-            flow.user_agent = APPLICATION_NAME
-            if flags:
-                credentials = tools.run_flow(flow, store, flags)
-            else: # Needed only for compatibility with Python 2.6
-                credentials = tools.run(flow, store)
-            logging.info('Storing credentials to ' + credential_path)
-        return credentials
+            store = Storage(credential_path)
+            credentials = store.get()
+            if not credentials or credentials.invalid:
+                flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
+                flow.user_agent = APPLICATION_NAME
+                if flags:
+                    credentials = tools.run_flow(flow, store, flags)
+                else: # Needed only for compatibility with Python 2.6
+                    credentials = tools.run(flow, store)
+                logging.info('Storing credentials to ' + credential_path)
+            return credentials
+        except Exception as err:
+            print(err)
+            return None
 
 
     def get_service_object(self):
-        credentials = self.get_credentials()
-        http = credentials.authorize(httplib2.Http())
-        service = discovery.build('drive', 'v3', http=http)
-        return service
+        try:
+            credentials = self.get_credentials()
+            http = credentials.authorize(httplib2.Http())
+            service = discovery.build('drive', 'v3', http=http)
+            return service
+        except Exception as err:
+            print(err)
+            return None
 
 
     # SECTION : Folder manager
@@ -73,7 +81,8 @@ class GoogleDrive(object):
         try:
             self.drive_service.files().delete(fileId=file_id).execute()
             return True
-        except:
+        except Exception as err:
+            print(err)
             return False
 
 
@@ -119,7 +128,8 @@ class GoogleDrive(object):
                 # logging.debug('Files:')
                 # for item in items:
                 #     logging.debug('{0} ({1})'.format(item['name'], item['id']))
-        except:
+        except Exception as err:
+            print(err)
             return False, 0
 
 
@@ -136,12 +146,20 @@ class GoogleDrive(object):
             # logging.debug ('Folder ID: %s' % file.get('id'))
             
             return True, file.get('id')
-        except:
+        except Exception as err:
+            print(err)
             return False, 0
 
 
     def upload_file(self, file_name, file_path):
         try:
+
+            # Dont upload very small files
+            size = os.path.getsize(file_path)
+            if size < 100000:
+                print(file_path)
+                return True                
+
             status, folder_id = self.create_folder_if_not_exists()
             if status is True:
                 file_metadata = {
@@ -150,7 +168,7 @@ class GoogleDrive(object):
                 }
 
                 media = MediaFileUpload(file_path,
-                                        resumable=True)
+                                        resumable=False)
 
                 file = self.drive_service.files().create(body=file_metadata,
                                                     media_body=media,
@@ -161,6 +179,7 @@ class GoogleDrive(object):
             else:
                 return False
         except Exception as err:
+            print(err)
             print('error uploading file')
             return False
 
