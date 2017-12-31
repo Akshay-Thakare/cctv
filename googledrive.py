@@ -1,7 +1,6 @@
 import logging
 import httplib2
 import os
-import redisqueue as qm
 
 from googleapiclient.http import MediaFileUpload
 from datetime import datetime, timedelta
@@ -90,7 +89,7 @@ class GoogleDrive(object):
         logging.debug("ENTRY - findDecay")
         
         st = datetime.now() - timedelta(days=15)
-        query = " modifiedTime <= '" + st.isoformat() + "' and  '" + self.create_folder_if_not_exists(self.drive_service) + "' in parents"
+        query = " modifiedTime <= '" + st.isoformat() + "' and  '" + self.create_folder_if_not_exists()[1] + "' in parents"
         
         # logging.info(query)
         
@@ -103,7 +102,8 @@ class GoogleDrive(object):
         items = results.get('files', [])
         
         for item in items:
-            # logging.info('{0} ({1})'.format(item['name'], item['id']))
+            import redisqueue as qm
+            logging.info('{0} ({1})'.format(item['name'], item['id']))
             qm.add_to_deleted_queue(redis=self.redis, element=item['id'])
 
         logging.debug("EXIT - findDecay")
@@ -154,10 +154,10 @@ class GoogleDrive(object):
     def upload_file(self, file_name, file_path):
         try:
 
-            # Dont upload very small files
+            # First get file size
             size = os.path.getsize(file_path)
             if size < 100000:
-                print(file_path)
+                print("not uploading : "+file_path)
                 return True                
 
             status, folder_id = self.create_folder_if_not_exists()
@@ -168,7 +168,7 @@ class GoogleDrive(object):
                 }
 
                 media = MediaFileUpload(file_path,
-                                        resumable=False)
+                                        resumable=True)
 
                 file = self.drive_service.files().create(body=file_metadata,
                                                     media_body=media,
@@ -180,7 +180,7 @@ class GoogleDrive(object):
                 return False
         except Exception as err:
             print(err)
-            print('error uploading file')
+            print('gd:error uploading file')
             return False
 
         # TODO : List files in a folder

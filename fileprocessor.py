@@ -14,6 +14,7 @@ FOLDER_PATH_PI_OLD = "/home/pi/test_data"
 FOLDER_PATH_CCTV = "/home/pi/cctv_data"
 FOLDER_PATH_DEV = "/home/pi/cctv_test2"
 FOLDER_PATH = FOLDER_PATH_DEV
+TESTING_DEFAULT_BEFORE_DAYS = 15
 
 class FileProcessor(object):
 
@@ -55,23 +56,29 @@ class FileProcessor(object):
 				# add file to transient processing holder
 				qm.transient_processing(self.redis, currentFileName)
 
-				# ask google drive to upload file
-				if (self.gd.upload_file(currentFileName, currentFilePath)):
-					logging.debug("File successfully uploaded : " + currentFileName)
+				# check if file exists
+				if(self.check_if_file_exists(currentFilePath)):
+					# ask google drive to upload file
+					if (self.gd.upload_file(currentFileName, currentFilePath)):
+						logging.debug("File successfully uploaded : " + currentFileName)
 
-					# remove element from unprocessed queue
-					if (qm.pop_element_from_unprocessed_queue(self.redis) == currentFileName):
-						# add element to uploaded queue
-						qm.add_to_uploaded_queue(self.redis, currentFileName)
-						logging.debug("Done processing file : " + currentFileName)
+						# remove element from unprocessed queue
+						if (qm.pop_element_from_unprocessed_queue(self.redis) == currentFileName):
+							# add element to uploaded queue
+							qm.add_to_uploaded_queue(self.redis, currentFileName)
+							logging.debug("Done processing file : " + currentFileName)
+						else:
+							# queue is corrupted
+							logging.error("Queue corrupted. Needs to be looked into")
+							logging.error("QUEUE DUMP")
+							qm.printUnprocessedQueue(self.redis, 0, -1)
 					else:
-						# queue is corrupted
-						logging.error("Queue corrupted. Needs to be looked into")
-						logging.error("QUEUE DUMP")
-						qm.printUnprocessedQueue(self.redis, 0, -1)
+						logging.error("Error uploading file : " + currentFileName)
 				else:
-					logging.error("Error uploading file : " + currentFileName)
+					qm.pop_element_from_unprocessed_queue(self.redis)
+					logging.info("Fixed system corruption")
 			else:
+				self.fix_queue()
 				# logging.info("wait for jobs to be added to unprocessed queue")
 				time.sleep(10)
 
@@ -94,19 +101,23 @@ class FileProcessor(object):
 				# add file to transient processing holder
 				qm.transient_deleting(self.redis, currentFileName)
 
-				# delete from File System
-				if (self.delete_file_locally(currentFilePath)):
-					logging.debug("File deleted from fs : " + currentFileName)
+				# check if file exists
+				if(self.check_if_file_exists(currentFilePath)):
+					# delete from File System
+					if (self.delete_file_locally(currentFilePath)):
+						logging.debug("File deleted from fs : " + currentFileName)
 
-					if (qm.pop_element_from_uploaded_queue(self.redis) == currentFileName):
-						logging.debug("Successfully remove element from delete queue")
+						if (qm.pop_element_from_uploaded_queue(self.redis) == currentFileName):
+							logging.debug("Successfully remove element from delete queue")
+
+						else:
+							logging.error("Error removing element from delete queue")
 
 					else:
-						logging.error("Error removing element from delete queue")
-
+						logging.error("Failed to delete file : " + currentFileName)
 				else:
-					logging.error("Failed to delete file : " + currentFileName)
-
+					qm.pop_element_from_uploaded_queue(self.redis)
+					logging.info("Fixed queue corruption")
 			else:
 				logging.debug("wait for jobs to be added to uploaded queue")
 				time.sleep(10)
@@ -119,7 +130,7 @@ class FileProcessor(object):
 
 			if (self.DECAY_FLAG):
 				logging.debug("ENTRY - Find decay")
-				self.gd.find_decay(self.redis, before_days=TESTING_DEFAULT_BEFORE_DAYS)
+				self.gd.find_decay(self.redis)
 				self.DECAY_FLAG = False
 				logging.debug("EXIT - Find decay")
 
@@ -140,6 +151,7 @@ class FileProcessor(object):
 				logging.debug("No jobs to be processed. Sleeping for next 24 hours")
 				self.DECAY_FLAG = True
 				time.sleep(60*60*24)
+				# time.sleep(10)
 
 			logging.debug("EXIT - processDecay")
 
@@ -153,3 +165,18 @@ class FileProcessor(object):
 	        return True
 	    except OSError:
 	        return False
+
+	def check_if_file_exists(self, filePath):
+		try:
+			return isfile(filePath)
+		except Exception as err:
+			return False
+
+	def fix_queue(self):
+		try:
+			for file in listdir(FOLDER_PATH):
+			    if file.endswith(".avi"):
+			        # print(join(FOLDER_PATH+"/", file))
+			        qm.add_to_unprocessed_queue(self.redis, file)
+		except Exception as err:
+			logging.error(err)
