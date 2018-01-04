@@ -129,29 +129,34 @@ class FileProcessor(object):
 			logging.debug("ENTRY - processDecay")
 
 			if (self.DECAY_FLAG):
+				print("finding decay")
 				logging.debug("ENTRY - Find decay")
 				self.gd.find_decay(self.redis)
 				self.DECAY_FLAG = False
 				logging.debug("EXIT - Find decay")
 
 				# check if files are present which need to be deleted
-				if (qm.get_deleted_queue_size(self.redis)):
+				while(qm.get_deleted_queue_size(self.redis)>0):
+					if (qm.get_deleted_queue_size(self.redis)>0):
 
-					# pop a job from top of the queue
-					fileId = qm.pop_element_from_deleted_queue(self.redis)
+						# pop a job from top of the queue
+						fileId = qm.pop_element_from_deleted_queue(self.redis)
 
-					# ask google to delete file
-					if (self.gd.delete_file(fileId)):
-						# logging.info("File successfully deleted : "+fileId)
-						logging.debug("File successfully deleted")
-				else:
-					# No need to handle this case, as the queue would be regenerated every 24hrs either ways
-					logging.error("Unable to delete file")
+						# ask google to delete file
+						if (self.gd.delete_file(fileId)):
+							# logging.info("File successfully deleted : "+fileId)
+							logging.debug("File successfully deleted")
+							print("file deleted")
+							self.DECAY_FLAG = True
+					else:
+						# No need to handle this case, as the queue would be regenerated every 24hrs either ways
+						print("unable to delete file")
+						logging.error("Unable to delete file")
 			else:
 				logging.debug("No jobs to be processed. Sleeping for next 24 hours")
 				self.DECAY_FLAG = True
-				time.sleep(60*60*24)
-				# time.sleep(10)
+				#time.sleep(60*60*24)
+				time.sleep(120)
 
 			logging.debug("EXIT - processDecay")
 
